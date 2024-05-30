@@ -38,5 +38,22 @@ public class SecurityConstants {
      */
     public static final String OAUTH_PARAMETER_NAME_SMS_CAPTCHA = "sms_captcha";
 
+
+    /**
+     * 登录方式入参名
+     */
+    public static final String LOGIN_TYPE_NAME = "loginType";
+
+    /**
+     * 验证码id入参名
+     */
+    public static final String CAPTCHA_ID_NAME = "captchaId";
+
+    /**
+     * 验证码值入参名
+     */
+    public static final String CAPTCHA_CODE_NAME = "code";
+
+
 }
 

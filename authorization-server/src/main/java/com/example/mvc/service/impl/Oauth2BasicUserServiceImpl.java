@@ -4,10 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.ObjectUtils;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.example.mvc.entity.Oauth2BasicUser;
-import com.example.mvc.entity.SysAuthority;
-import com.example.mvc.entity.SysRoleAuthority;
-import com.example.mvc.entity.SysUserRole;
+import com.example.mvc.entity.*;
 import com.example.mvc.mapper.Oauth2BasicUserMapper;
 import com.example.mvc.mapper.SysAuthorityMapper;
 import com.example.mvc.mapper.SysRoleAuthorityMapper;
@@ -76,7 +73,7 @@ public class Oauth2BasicUserServiceImpl extends ServiceImpl<Oauth2BasicUserMappe
 
         // 根据菜单ID查出菜单
         List<SysAuthority> menus = sysAuthorityMapper.selectBatchIds(menusId);
-        Set<SimpleGrantedAuthority> authorities = Optional.ofNullable(menus).orElse(Collections.emptyList()).stream().map(SysAuthority::getUrl).map(SimpleGrantedAuthority::new).collect(Collectors.toSet());
+        Set<CustomGrantedAuthority> authorities = Optional.ofNullable(menus).orElse(Collections.emptyList()).stream().map(SysAuthority::getAuthority).map(CustomGrantedAuthority::new).collect(Collectors.toSet());
         basicUser.setAuthorities(authorities);
         return basicUser;
     }
