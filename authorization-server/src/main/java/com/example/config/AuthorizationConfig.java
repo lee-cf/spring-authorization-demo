@@ -11,6 +11,7 @@ import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
+import lombok.SneakyThrows;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
@@ -18,13 +19,12 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.annotation.Secured;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
@@ -48,7 +48,6 @@ import org.springframework.security.oauth2.server.authorization.token.OAuth2Toke
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenGenerator;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.DefaultSecurityFilterChain;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
@@ -172,7 +171,7 @@ public class AuthorizationConfig {
     public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
         http.authorizeHttpRequests((authorize) -> authorize
                         // 放行静态资源
-                        .requestMatchers("/assets/**", "/webjars/**", "/login", "getCaptcha", "/getSmsCaptcha").permitAll()
+                        .requestMatchers("/assets/**", "/webjars/**", "/login", "/getCaptcha", "/getSmsCaptcha").permitAll()
                         .anyRequest().authenticated()
                 )
                 // 指定登录页面
@@ -189,6 +188,69 @@ public class AuthorizationConfig {
         );
 
         return http.build();
+    }
+
+    /**
+     * 自定义jwt，将权限信息放至jwt中
+     *
+     * @return OAuth2TokenCustomizer的实例
+     */
+    @Bean
+    public OAuth2TokenCustomizer<JwtEncodingContext> oAuth2TokenCustomizer() {
+        return context -> {
+            // 检查登录用户信息是不是UserDetails，排除掉没有用户参与的流程
+            if (context.getPrincipal().getPrincipal() instanceof UserDetails user) {
+                // 获取申请的scopes
+                Set<String> scopes = context.getAuthorizedScopes();
+                // 获取用户的权限
+                Collection<? extends GrantedAuthority> authorities = user.getAuthorities();
+                // 提取权限并转为字符串
+                Set<String> authoritySet = Optional.ofNullable(authorities).orElse(Collections.emptyList()).stream()
+                        // 获取权限字符串
+                        .map(GrantedAuthority::getAuthority)
+                        // 去重
+                        .collect(Collectors.toSet());
+
+                // 合并scope与用户信息
+                authoritySet.addAll(scopes);
+
+                JwtClaimsSet.Builder claims = context.getClaims();
+                // 将权限信息放入jwt的claims中（也可以生成一个以指定字符分割的字符串放入）
+                claims.claim(SecurityConstants.AUTHORITIES_KEY, authoritySet);
+                // 放入其它自定内容
+                // 角色、头像...
+            }
+        };
+    }
+
+    /**
+     * 自定义jwt解析器，设置解析出来的权限信息的前缀与在jwt中的key
+     *
+     * @return jwt解析器 JwtAuthenticationConverter
+     */
+    @Bean
+    public JwtAuthenticationConverter jwtAuthenticationConverter() {
+        JwtGrantedAuthoritiesConverter grantedAuthoritiesConverter = new JwtGrantedAuthoritiesConverter();
+        // 设置解析权限信息的前缀，设置为空是去掉前缀
+        grantedAuthoritiesConverter.setAuthorityPrefix("");
+        // 设置权限信息在jwt claims中的key
+        grantedAuthoritiesConverter.setAuthoritiesClaimName(SecurityConstants.AUTHORITIES_KEY);
+
+        JwtAuthenticationConverter jwtAuthenticationConverter = new JwtAuthenticationConverter();
+        jwtAuthenticationConverter.setJwtGrantedAuthoritiesConverter(grantedAuthoritiesConverter);
+        return jwtAuthenticationConverter;
+    }
+
+
+    /**
+     * 将AuthenticationManager注入ioc中，其它需要使用地方可以直接从ioc中获取
+     * @param authenticationConfiguration 导出认证配置
+     * @return AuthenticationManager 认证管理器
+     */
+    @Bean
+    @SneakyThrows
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration) {
+        return authenticationConfiguration.getAuthenticationManager();
     }
 
     /**
@@ -221,6 +283,7 @@ public class AuthorizationConfig {
                 .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
                 .authorizationGrantType(AuthorizationGrantType.REFRESH_TOKEN)
                 .authorizationGrantType(AuthorizationGrantType.CLIENT_CREDENTIALS)
+                // 客户端添加自定义认证
                 .authorizationGrantType(new AuthorizationGrantType(SecurityConstants.GRANT_TYPE_SMS_CODE))
                 // 授权码模式回调地址，oauth2.1已改为精准匹配，不能只设置域名，并且屏蔽了localhost，本机使用127.0.0.1访问
                 .redirectUri("http://127.0.0.1:8080/login/oauth2/code/messaging-client-oidc")
@@ -366,79 +429,10 @@ public class AuthorizationConfig {
                     设置token签发地址(http(s)://{ip}:{port}/context-path, http(s)://domain.com/context-path)
                     如果需要通过ip访问这里就是ip，如果是有域名映射就填域名，通过什么方式访问该服务这里就填什么
                  */
-                .issuer("http://192.168.3.173:8080")
+//                .issuer("http://192.168.3.173:8080")
                 .build();
     }
-
-    /**
-     * 先暂时配置一个基于内存的用户，框架在用户认证时会默认调用
-     * {@link UserDetailsService#loadUserByUsername(String)} 方法根据
-     * 账号查询用户信息，一般是重写该方法实现自己的逻辑
-     *
-     * @param passwordEncoder 密码解析器
-     * @return UserDetailsService
-     */
-    @Bean
-    public UserDetailsService users(PasswordEncoder passwordEncoder) {
-        UserDetails user = User.withUsername("admin")
-                .password(passwordEncoder.encode("123456"))
-                .roles("admin", "normal", "unAuthentication")
-                .authorities("app", "web", "/test2", "/test3")
-                .build();
-        return new InMemoryUserDetailsManager(user);
-    }
-
-    /**
-     * 自定义jwt，将权限信息放至jwt中
-     *
-     * @return OAuth2TokenCustomizer的实例
-     */
-    @Bean
-    public OAuth2TokenCustomizer<JwtEncodingContext> oAuth2TokenCustomizer() {
-        return context -> {
-            // 检查登录用户信息是不是UserDetails，排除掉没有用户参与的流程
-            if (context.getPrincipal().getPrincipal() instanceof UserDetails user) {
-                // 获取申请的scopes
-                Set<String> scopes = context.getAuthorizedScopes();
-                // 获取用户的权限
-                Collection<? extends GrantedAuthority> authorities = user.getAuthorities();
-                // 提取权限并转为字符串
-                Set<String> authoritySet = Optional.ofNullable(authorities).orElse(Collections.emptyList()).stream()
-                        // 获取权限字符串
-                        .map(GrantedAuthority::getAuthority)
-                        // 去重
-                        .collect(Collectors.toSet());
-
-                // 合并scope与用户信息
-                authoritySet.addAll(scopes);
-
-                JwtClaimsSet.Builder claims = context.getClaims();
-                // 将权限信息放入jwt的claims中（也可以生成一个以指定字符分割的字符串放入）
-                claims.claim("authorities", authoritySet);
-                // 放入其它自定内容
-                // 角色、头像...
-            }
-        };
-    }
-
-    /**
-     * 自定义jwt解析器，设置解析出来的权限信息的前缀与在jwt中的key
-     *
-     * @return jwt解析器 JwtAuthenticationConverter
-     */
-    @Bean
-    public JwtAuthenticationConverter jwtAuthenticationConverter() {
-        JwtGrantedAuthoritiesConverter grantedAuthoritiesConverter = new JwtGrantedAuthoritiesConverter();
-        // 设置解析权限信息的前缀，设置为空是去掉前缀
-        grantedAuthoritiesConverter.setAuthorityPrefix("");
-        // 设置权限信息在jwt claims中的key
-        grantedAuthoritiesConverter.setAuthoritiesClaimName("authorities");
-
-        JwtAuthenticationConverter jwtAuthenticationConverter = new JwtAuthenticationConverter();
-        jwtAuthenticationConverter.setJwtGrantedAuthoritiesConverter(grantedAuthoritiesConverter);
-        return jwtAuthenticationConverter;
-    }
-
 
 }
+
 
