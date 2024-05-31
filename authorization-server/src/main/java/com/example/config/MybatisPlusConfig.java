@@ -18,7 +18,7 @@ import java.time.LocalDateTime;
  */
 @Configuration
 // Mapper接口的包路径，记得替换为自己的mapper接口包路径
-@MapperScan("com.example.mvc.mapper")
+@MapperScan("com.example.mapper")
 public class MybatisPlusConfig {
 
     /**

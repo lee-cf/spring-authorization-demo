@@ -14,4 +14,4 @@ spring:
 mybatis-plus:
   # 扫描mapper文件
   mapper-locations:
-    - classpath:com/example/mvc/mapper/xml/*Mapper.xml
+    - classpath:com/example/mapper/xml/*Mapper.xml
