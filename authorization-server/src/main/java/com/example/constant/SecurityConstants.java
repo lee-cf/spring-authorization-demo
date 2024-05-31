@@ -54,6 +54,11 @@ public class SecurityConstants {
      */
     public static final String CAPTCHA_CODE_NAME = "code";
 
+    /**
+     * 随机字符串请求头名字
+     */
+    public static final String NONCE_HEADER_NAME = "nonceId";
+
 
 }
 
