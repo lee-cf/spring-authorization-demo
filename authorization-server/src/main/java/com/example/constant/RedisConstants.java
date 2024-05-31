@@ -32,4 +32,10 @@ public class RedisConstants {
      */
     public static final long DEFAULT_TIMEOUT_SECONDS = 60L * 5;
 
+    /**
+     * jwk set缓存前缀
+     */
+    public static final String AUTHORIZATION_JWS_PREFIX_KEY = "authorization_jws";
+
+
 }
